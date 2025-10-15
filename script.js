@@ -135,8 +135,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   botonBorrar.addEventListener('click', () => {
-  limpiarMapa();
-  menuOpciones.classList.remove('show');
+    limpiarMapa();
+    menuOpciones.classList.remove('show');
   });
 
   function verificarUbicacionEnArea(){
@@ -184,14 +184,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Geolocalización con manejo de errores
   if(navigator.geolocation){
-    navigator.geolocation.watchPosition(pos=>{
-      posicionActual = pos.coords;
-      verificarUbicacionEnArea();
-    }, err=>console.warn('Error de geolocalización:',err.message),{
-      enableHighAccuracy:true,
-      maximumAge:5000,
-      timeout:10000
-    });
-  } else alert("Tu navegador no soporta geolocalización.");
+    navigator.geolocation.watchPosition(
+      pos => {
+        posicionActual = pos.coords;
+        verificarUbicacionEnArea();
+      },
+      err => {
+        if(err.code === 1) alert("Permiso denegado. Activa la ubicación para ver tu posición.");
+        else if(err.code === 2) alert("Ubicación no disponible. Activa el GPS de tu dispositivo.");
+        else if(err.code === 3) alert("Tiempo de espera agotado al obtener ubicación.");
+      },
+      { enableHighAccuracy:true, maximumAge:5000, timeout:10000 }
+    );
+  } else {
+    alert("Tu navegador no soporta geolocalización.");
+  }
 });
