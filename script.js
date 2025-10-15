@@ -193,7 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
       },
       err => {
         if(err.code === 1) alert("Permiso denegado. Activa la ubicación para ver tu posición.");
-        else if(err.code === 2) alert("Ubicación no disponible. Activa el GPS de tu dispositivo.");
+        else if(err.code === 2) alert("Ubicación no disponible. Activa el GPS de tu dispositivo y recarga la pagina.");
         else if(err.code === 3) alert("Tiempo de espera agotado al obtener ubicación.");
       },
       { enableHighAccuracy:true, maximumAge:5000, timeout:10000 }
@@ -202,3 +202,4 @@ document.addEventListener('DOMContentLoaded', () => {
     alert("Tu navegador no soporta geolocalización.");
   }
 });
+
