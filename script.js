@@ -1,0 +1,197 @@
+document.addEventListener('DOMContentLoaded', () => {
+  const map = L.map('map', { zoomControl: true }).setView([40.4168, -3.7038], 6);
+  map.zoomControl.setPosition('topright');
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  let puntos = [], marcadores = [];
+  let poligono = L.polygon([], { color: '#ff4757', fillColor:'#ff6b6b', fillOpacity: 0.2 }).addTo(map);
+  const areaTooltip = document.getElementById('areaTooltip');
+
+  const menuBtn = document.getElementById('menuBtn');
+  const menuOpciones = document.getElementById('menuOpciones');
+  const inputCSV = document.getElementById('archivoCSV');
+  const botonCargarCSV = document.getElementById('botonCargarCSV');
+  const botonGuardar = document.getElementById('guardarCSV');
+  const botonBorrar = document.getElementById('borrarTodo');
+
+  let marcadorUsuario = null, circuloPrecision = null, posicionActual = null;
+
+  menuBtn.addEventListener('click', () => menuOpciones.classList.toggle('show'));
+  document.addEventListener('click', e => {
+    if (!document.getElementById('panel').contains(e.target)) menuOpciones.classList.remove('show');
+  });
+
+  const smallIcon = L.divIcon({
+    className: 'small-div-icon',
+    html: '<span class="small-dot" style="background:#2A93EE;"></span>',
+    iconSize: [10,10],
+    iconAnchor: [5,5]
+  });
+
+  function actualizarPoligono() {
+    const coords = marcadores.map(m => [m.getLatLng().lat, m.getLatLng().lng]);
+    poligono.setLatLngs(coords);
+
+    if (coords.length >= 3) {
+      const turfCoords = coords.map(c => [c[1], c[0]]);
+      const poly = turf.polygon([[...turfCoords, turfCoords[0]]]);
+      const area = turf.area(poly)/1_000_000;
+      areaTooltip.textContent = `Área: ${area.toFixed(2)} km²`;
+    } else {
+      areaTooltip.textContent = 'Área: 0 km²';
+      if (marcadorUsuario) marcadorUsuario.remove(), marcadorUsuario=null;
+      if (circuloPrecision) circuloPrecision.remove(), circuloPrecision=null;
+    }
+
+    verificarUbicacionEnArea();
+  }
+
+  function crearMarcador(latlng) {
+    const marcador = L.marker(latlng, { draggable:true, icon:smallIcon }).addTo(map);
+
+    marcador.on('drag', () => {
+      puntos = marcadores.map(m => [m.getLatLng().lng, m.getLatLng().lat]);
+      actualizarPoligono();
+    });
+
+    marcador.on('contextmenu', () => {
+      marcador.remove();
+      marcadores = marcadores.filter(m => m !== marcador);
+      puntos = marcadores.map(m => [m.getLatLng().lng, m.getLatLng().lat]);
+      actualizarPoligono();
+    });
+
+    // Doble tap en móvil para borrar marcador
+    let lastTap = 0;
+    marcador.on('click', () => {
+      const currentTime = new Date().getTime();
+      const tapLength = currentTime - lastTap;
+      if (tapLength < 400 && window.innerWidth <= 768) {
+        marcador.remove();
+        marcadores = marcadores.filter(m => m !== marcador);
+        puntos = marcadores.map(m => [m.getLatLng().lng, m.getLatLng().lat]);
+        actualizarPoligono();
+      }
+      lastTap = currentTime;
+    });
+
+    return marcador;
+  }
+
+  map.on('click', e => {
+    const lnglat = [e.latlng.lng, e.latlng.lat];
+    puntos.push(lnglat);
+    const marcador = crearMarcador(e.latlng);
+    marcadores.push(marcador);
+    actualizarPoligono();
+  });
+
+  function limpiarMapa() {
+    marcadores.forEach(m => m.remove());
+    puntos = []; marcadores = [];
+    poligono.remove();
+    poligono = L.polygon([], { color:'#ff4757', fillColor:'#ff6b6b', fillOpacity:0.2 }).addTo(map);
+    areaTooltip.textContent = 'Área: 0 km²';
+    if (marcadorUsuario) marcadorUsuario.remove(), marcadorUsuario=null;
+    if (circuloPrecision) circuloPrecision.remove(), circuloPrecision=null;
+  }
+
+  botonCargarCSV.addEventListener('click',()=>inputCSV.click());
+  inputCSV.addEventListener('change', ev => {
+    const file = ev.target.files[0];
+    if(!file) return;
+    limpiarMapa();
+    Papa.parse(file,{header:true,dynamicTyping:true,complete: res=>{
+      res.data.forEach(r=>{
+        if(typeof r.latitud==='number' && typeof r.longitud==='number'){
+          const p=[r.longitud, r.latitud];
+          puntos.push(p);
+          const m = crearMarcador([p[1],p[0]]);
+          marcadores.push(m);
+        }
+      });
+      actualizarPoligono();
+      if(marcadores.length>0) map.fitBounds(poligono.getBounds());
+    }});
+  });
+
+  botonGuardar.addEventListener('click', () => {
+    if(puntos.length===0) return alert('No hay puntos para guardar');
+    const nombreArchivo = prompt("Introduce un nombre para el archivo CSV:", "area");
+    if(!nombreArchivo) return;
+    const data=puntos.map((p,i)=>({id:i+1,latitud:p[1],longitud:p[0]}));
+    const csv = Papa.unparse(data);
+    const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${nombreArchivo}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+  });
+
+  botonBorrar.addEventListener('click', () => {
+  limpiarMapa();
+  menuOpciones.classList.remove('show');
+  });
+
+  function verificarUbicacionEnArea(){
+    if(!posicionActual || puntos.length<3){
+      if(marcadorUsuario) marcadorUsuario.remove(), marcadorUsuario=null;
+      if(circuloPrecision) circuloPrecision.remove(), circuloPrecision=null;
+      return;
+    }
+
+    const {latitude:lat, longitude:lng, accuracy}=posicionActual;
+    const pt=turf.point([lng,lat]);
+    const poly=turf.polygon([[...puntos,puntos[0]]]);
+    const inside=turf.booleanPointInPolygon(pt,poly);
+
+    if(inside){
+      if(!marcadorUsuario){
+        marcadorUsuario = L.marker([lat, lng], {
+          icon:L.divIcon({
+            html:`<div style="
+              width:20px;height:20px;
+              background:#2ecc71;
+              border:2px solid white;
+              border-radius:50%;
+              pointer-events:none;
+            "></div>`,
+            className:'',
+            iconSize:[20,20],
+            iconAnchor:[10,10]
+          })
+        }).addTo(map);
+      } else marcadorUsuario.setLatLng([lat, lng]);
+
+      if(!circuloPrecision){
+        circuloPrecision=L.circle([lat, lng],{
+          radius: Math.max(accuracy,30),
+          color:'#05d75cb5',
+          fillColor:'#05d75cb5',
+          fillOpacity:0.1,
+          weight:1
+        }).addTo(map);
+      } else circuloPrecision.setLatLng([lat, lng]).setRadius(Math.max(accuracy,30));
+    } else {
+      if(marcadorUsuario) marcadorUsuario.remove(), marcadorUsuario=null;
+      if(circuloPrecision) circuloPrecision.remove(), circuloPrecision=null;
+    }
+  }
+
+  if(navigator.geolocation){
+    navigator.geolocation.watchPosition(pos=>{
+      posicionActual = pos.coords;
+      verificarUbicacionEnArea();
+    }, err=>console.warn('Error de geolocalización:',err.message),{
+      enableHighAccuracy:true,
+      maximumAge:5000,
+      timeout:10000
+    });
+  } else alert("Tu navegador no soporta geolocalización.");
+});
